@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/pem"
-	"glog"
 	"io/ioutil"
 	"os"
 
@@ -10,6 +9,7 @@ import (
 
 	"crypto/x509"
 
+	"github.com/golang/glog"
 	"github.com/google/go-tpm/tpm2"
 )
 
