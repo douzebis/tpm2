@@ -3,15 +3,20 @@ package main
 import (
 	"os"
 
-        "flag"
+	"flag"
 
 	"github.com/golang/glog"
 	"github.com/google/go-tpm/tpm2"
 )
 
+var (
+	tpmPath = flag.String("tpm-path", "/dev/tpm0", "Path to the TPM device (character device or a Unix socket).")
+)
+
 func main() {
 	flag.Parse()
 	glog.V(2).Infof("======= Init  ========")
+	glog.Fatalf("tmpPath is: %q", tpmPath)
 
 	f, err := os.OpenFile("/dev/tpmrm0", os.O_RDWR, 0)
 	if err != nil {
