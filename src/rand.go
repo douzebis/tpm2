@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	f, err := os.OpenFile("/dev/tpmrm0", os.O_RDWR, 0)
+	f, err := os.OpenFile("/dev/tpmrmm0", os.O_RDWR, 0)
 	if err != nil {
 		glog.Fatalf("opening tpm: %v", err)
 	}
