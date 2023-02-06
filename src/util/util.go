@@ -34,7 +34,7 @@ go run src/csr/csr.go  --mode flush -v 20 -alsologtostderr
 */
 
 var (
-	tpmPath    = flag.String("tpm-path", "/dev/tpm0", "Path to the TPM device (character device or a Unix socket).")
+	tpmPath    = flag.String("tpm-path", "/dev/tpmrm0", "Path to the TPM device (character device or a Unix socket).")
 	san        = flag.String("dnsSAN", "server.domain.com", "DNS SAN Value for cert")
 	pemCSRFile = flag.String("pemCSRFile", "csr.pem", "CSR File to write to")
 	mode       = flag.String("mode", "flush", "either flush or print")
