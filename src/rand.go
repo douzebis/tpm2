@@ -16,7 +16,7 @@ var (
 func main() {
 	flag.Parse()
 	glog.V(2).Infof("======= Init  ========")
-	glog.Fatalf("tmpPath is: %q", tpmPath)
+	glog.Fatalf("tmpPath is: %s", *tpmPath)
 
 	f, err := os.OpenFile("/dev/tpmrm0", os.O_RDWR, 0)
 	if err != nil {
