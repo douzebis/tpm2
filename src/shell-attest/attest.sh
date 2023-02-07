@@ -63,8 +63,16 @@ else
   echo Credential activation failed!
 fi
 
+# At time of CA key ceremony
+# --------------------------
 
-# Create a CSR signed by the AK, for the EK
-# - Subject is AK
-# - Common name is EK?
+# Generate private key and self-signed certificate for CA
+# (In prod, private key must remain in HSM)
+
+# Follow https://www.cockroachlabs.com/docs/stable/create-security-certificates-openssl.html
+# Adapt with https://github.com/salrashid123/go_tpm_https_embed/blob/main/src/csr/csr.go
+
+# Create a CSR for the AK
 # Have S3NS CA sign the CSR
+
+# Same for the AIK
