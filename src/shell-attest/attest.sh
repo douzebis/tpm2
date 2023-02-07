@@ -1,5 +1,12 @@
 # Inspired by https://tpm2-software.github.io/2020/06/12/Remote-Attestation-With-tpm2-tools.html#simple-attestation-with-tpm2-tools
 
+# Attester machine configuration
+# ------------------------------
+
+# Install TPM2 provider for openssl
+sudo apt-get install tpm2-openssl
+
+
 # On attester (the machine being onboarded)
 # -----------------------------------------
 
@@ -66,11 +73,126 @@ fi
 # At time of CA key ceremony
 # --------------------------
 
+# Inspired by https://www.cockroachlabs.com/docs/stable/create-security-certificates-openssl.html
+
 # Generate private key and self-signed certificate for CA
 # (In prod, private key must remain in HSM)
 
-# Follow https://www.cockroachlabs.com/docs/stable/create-security-certificates-openssl.html
-# Adapt with https://github.com/salrashid123/go_tpm_https_embed/blob/main/src/csr/csr.go
+cat > ca.cnf <<'EOT'
+# OpenSSL CA configuration file
+[ ca ]
+default_ca = CA_default
+
+[ CA_default ]
+default_days = 365
+database = index.txt
+serial = serial.txt
+default_md = sha256
+copy_extensions = copy
+unique_subject = no
+
+# Used to create the CA certificate.
+[ req ]
+prompt=no
+distinguished_name = distinguished_name
+x509_extensions = extensions
+
+[ distinguished_name ]
+organizationName = S3NS
+commonName = S3NS CA
+
+[ extensions ]
+keyUsage = critical,digitalSignature,nonRepudiation,keyEncipherment,keyCertSign
+basicConstraints = critical,CA:true,pathlen:1
+
+# Common policy for nodes and users.
+[ signing_policy ]
+organizationName = supplied
+commonName = optional
+
+# Used to sign node certificates.
+[ signing_node_req ]
+keyUsage = critical,digitalSignature,keyEncipherment
+extendedKeyUsage = serverAuth,clientAuth
+
+# Used to sign client certificates.
+[ signing_client_req ]
+keyUsage = critical,digitalSignature,keyEncipherment
+extendedKeyUsage = clientAuth
+EOT
+
+# Create the CA key using the openssl genrsa command:
+openssl genrsa -out ca.key 2048
+chmod 400 ca.key
+
+# Create the CA certificate using the openssl req command:
+openssl req \
+-new \
+-x509 \
+-config ca.cnf \
+-key ca.key \
+-out certs/ca.crt \
+-days 365 \
+-batch
+
+# Reset database and index files:
+rm -f index.txt serial.txt
+touch index.txt
+echo '01' > serial.txt
+
+# Create the client.cnf file for the first user and copy the following configuration into it:
+
+cat > client.cnf <<'EOT'
+[ req ]
+prompt=no
+distinguished_name = distinguished_name
+req_extensions = extensions
+
+[ distinguished_name ]
+organizationName = Cockroach
+commonName = <username_1>
+
+[ extensions ]
+subjectAltName = DNS:root
+EOT
+
+# Create the key for the first client using the openssl genrsa command:
+##openssl genrsa -out certs/client.AK.key 2048
+##chmod 400 certs/client.AK.key
+
+# Create the CSR for the first client using the openssl req command:
+openssl req \
+-new \
+-config client.cnf \
+-key certs/client.AK.key \
+-out client.AK.csr \
+-batch
+
+# https://github.com/tpm2-software/tpm2-openssl/blob/master/docs/certificates.md
+tpm2_createek -G ecc -c ek_ecc.ctx
+tpm2_createak -C ek_ecc.ctx -G ecc -g sha256 -s ecdsa -c ak_ecc.ctx
+tpm2_evictcontrol -c ak_ecc.ctx 0x81000000
+
+openssl req -provider tpm2 -new -subj "/C=GB/CN=foo" -key handle:0x81000000 -out testcsr.pem
+
+
+# Sign the client CSR to create the client certificate for the first client using the openssl ca command.
+openssl ca \
+-config ca.cnf \
+-keyfile my-safe-directory/ca.key \
+-cert certs/ca.crt \
+-policy signing_policy \
+-extensions signing_client_req \
+-out certs/client.AK.crt \
+-outdir certs/ \
+-in client.AK.csr \
+-batch
+
+# Verify the values in the CN field in the certificate:
+openssl x509 -in certs/client.AK.crt -text | grep CN=
+
+
+
 
 # Create a CSR for the AK
 # Have S3NS CA sign the CSR
