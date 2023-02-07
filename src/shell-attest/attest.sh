@@ -131,7 +131,7 @@ openssl req \
 -x509 \
 -config ca.cnf \
 -key ca.key \
--out certs/ca.crt \
+-out ca.crt \
 -days 365 \
 -batch
 
@@ -149,8 +149,8 @@ distinguished_name = distinguished_name
 req_extensions = extensions
 
 [ distinguished_name ]
-organizationName = Cockroach
-commonName = <username_1>
+organizationName = S3NS
+commonName = AK
 
 [ extensions ]
 subjectAltName = DNS:root
@@ -161,29 +161,25 @@ EOT
 ##chmod 400 certs/client.AK.key
 
 # Create the CSR for the first client using the openssl req command:
+# https://github.com/tpm2-software/tpm2-openssl/blob/master/docs/certificates.md
+tpm2_evictcontrol -c rsa_ak.ctx 0x81000000
 openssl req \
+-provider tpm2 \
 -new \
 -config client.cnf \
--key certs/client.AK.key \
+-key handle:0x81000000 \
 -out client.AK.csr \
 -batch
-
-# https://github.com/tpm2-software/tpm2-openssl/blob/master/docs/certificates.md
-tpm2_createek -G ecc -c ek_ecc.ctx
-tpm2_createak -C ek_ecc.ctx -G ecc -g sha256 -s ecdsa -c ak_ecc.ctx
-tpm2_evictcontrol -c ak_ecc.ctx 0x81000000
-
-openssl req -provider tpm2 -new -subj "/C=GB/CN=foo" -key handle:0x81000000 -out testcsr.pem
 
 
 # Sign the client CSR to create the client certificate for the first client using the openssl ca command.
 openssl ca \
 -config ca.cnf \
--keyfile my-safe-directory/ca.key \
--cert certs/ca.crt \
+-keyfile ca.key \
+-cert ca.crt \
 -policy signing_policy \
 -extensions signing_client_req \
--out certs/client.AK.crt \
+-out client.AK.crt \
 -outdir certs/ \
 -in client.AK.csr \
 -batch
