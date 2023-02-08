@@ -25,5 +25,17 @@ sudo update-grub
 sudo reboot now
 
 # Predict PCR status
-# TODO
-sudo tpm2_pcrread
+# See https://google.github.io/tpm-js/#pg_pcrs
+
+rm -rf image
+mkdir -p image
+sudo tpm2_eventlog /sys/kernel/security/tpm0/binary_bios_measurements \
+> image/eventlog.txt
+
+for ndx in 0 1 2 3 4 5 6 7 8 9 14; do
+    tpm2_pcrread -o image/pcr$ndx.bin sha256:$ndx
+done
+cat image/pcr[0123456789].bin image/pcr14.bin \
+| openssl dgst -sha256 -binary \
+| xxd -p -c 32 -g 32 \
+> image/expected_digest.txt

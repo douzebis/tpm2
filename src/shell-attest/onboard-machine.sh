@@ -6,39 +6,52 @@
 rm -rf machine
 mkdir -p machine
 
+tpm2_clear
+
 tpm2_createek \
---ek-context machine/rsa_ek.ctx \
+--ek-context machine/ek.ctx \
 --key-algorithm rsa \
---public rsa_ek_pub.der
+--public machine/ek_pub.tss
+
+tpm2_print -t TPM2B_PUBLIC -f pem machine/ek_pub.tss \
+> machine/ek_pub.pem
 
 tpm2_createak \
---ek-context rsa_ek.ctx \
---ak-context rsa_ak.ctx \
+--ek-context machine/ek.ctx \
+--ak-context machine/ak.ctx \
 --key-algorithm rsa \
 --hash-algorithm sha256 \
 --signing-algorithm rsassa \
---public rsa_ak.pub \
---private rsa_ak.priv \
---ak-name rsa_ak.name
+--public machine/ak_pub.tss \
+--private machine/ak_priv.tss \
+--ak-name machine/ak.name
+
+tpm2_print -t TPM2B_PUBLIC -f pem machine/ak_pub.tss \
+> machine/ak_pub.pem
 
 # On verifier (e.g. CI/CD chain)
 # ------------------------------
 
 # Verify that the EK is known to the TPM manufacturer
-# TODO
+if diff -bB manufacturer/ek_pub_ref.pem machine/ek_pub.pem; then
+    echo ek_pub is as expected
+else
+    echo ek_pub is not as expected from manufacturer records
+    (exit 1)
+fi   
 
 # Properly format the AK name
-file_size=`stat --printf="%s" rsa_ak.name`
-loaded_key_name=`cat rsa_ak.name | xxd -p -c $file_size`
+file_size=`stat --printf="%s" machine/ak.name`
+loaded_key_name=`cat machine/ak.name | xxd -p -c $file_size`
 
 # Create wrapped credential blob
-head -c 16 /dev/urandom | xxd -p > file_input.data
+head -c 16 /dev/urandom | xxd -p > machine/challenge.data
 tpm2_makecredential \
 --tcti none \
---encryption-key rsa_ek.pub \
---secret file_input.data \
+--encryption-key machine/ek_pub.tss \
+--secret machine/challenge.data \
 --name $loaded_key_name \
---credential-blob cred.out
+--credential-blob machine/cred.out
 
 # On attester
 # -----------
@@ -46,99 +59,95 @@ tpm2_makecredential \
 # Activate the wrapped credential
 tpm2_startauthsession \
 --policy-session \
---session session.ctx
+--session machine/session.ctx
 
 TPM2_RH_ENDORSEMENT=0x4000000B
-tpm2_policysecret -S session.ctx -c $TPM2_RH_ENDORSEMENT
+tpm2_policysecret -S machine/session.ctx -c $TPM2_RH_ENDORSEMENT
 
 tpm2_activatecredential \
---credentialedkey-context rsa_ak.ctx \
---credentialkey-context rsa_ek.ctx \
---credential-blob cred.out \
---certinfo-data actcred.out \
---credentialkey-auth "session:session.ctx"
+--credentialedkey-context machine/ak.ctx \
+--credentialkey-context machine/ek.ctx \
+--credential-blob machine/cred.out \
+--certinfo-data machine/actcred.out \
+--credentialkey-auth "session:machine/session.ctx"
 
-tpm2_flushcontext session.ctx
+# tpm2_flushcontext machine/session.ctx
+tpm2_evictcontrol -c machine/ak.ctx 0x81000000
 
-if diff -q file_input.data actcred.out >/dev/null; then
+# On verifier
+# -----------
+
+if diff -q machine/challenge.data machine/actcred.out >/dev/null; then
   echo Credential activation succeeded
 else
   echo Credential activation failed!
+  (exit 1)
 fi
 
-# At time of CA key ceremony
-# --------------------------
+###
+### At this point verifier knows that TPM is legit
+###
 
-# Inspired by https://www.cockroachlabs.com/docs/stable/create-security-certificates-openssl.html
+# On verifier
+# -----------
 
-# Generate private key and self-signed certificate for CA
-# (In prod, private key must remain in HSM)
+# Create nonce
+head -c 16 /dev/urandom | xxd -p > machine/quote_nonce.data
 
-cat > ca.cnf <<'EOT'
-# OpenSSL CA configuration file
-[ ca ]
-default_ca = CA_default
+# On attester
+# -----------
+tpm2_quote \
+--key-context machine/ak.ctx \
+--pcr-list sha256:0,1,2,3,4,5,6,7,8,9,14 \
+--message machine/pcr_quote.plain \
+--signature machine/pcr_quote.signature \
+--qualification machine/quote_nonce.data \
+--hash-algorithm sha256
 
-[ CA_default ]
-default_days = 365
-database = index.txt
-serial = serial.txt
-default_md = sha256
-copy_extensions = copy
-unique_subject = no
+# On verifier
+# -----------
 
-# Used to create the CA certificate.
-[ req ]
-prompt=no
-distinguished_name = distinguished_name
-x509_extensions = extensions
+# Check quote is legit
+if tpm2_checkquote \
+--public machine/ak_pub.tss \
+--message machine/pcr_quote.plain \
+--signature machine/pcr_quote.signature \
+--qualification machine/quote_nonce.data; then
+    echo Quote verification succeeded
+else
+    echo Quote verification failed!
+    (exit 1)
+fi
 
-[ distinguished_name ]
-organizationName = S3NS
-commonName = S3NS CA
+# Check PCR values are OK
+cat machine/pcr_quote.plain \
+| xxd -p -c 0 -g 0 \
+| tail -c 65 \
+> machine/actual_digest.txt
 
-[ extensions ]
-keyUsage = critical,digitalSignature,nonRepudiation,keyEncipherment,keyCertSign
-basicConstraints = critical,CA:true,pathlen:1
+if diff machine/actual_digest.txt image/expected_digest.txt; then
+    echo Machine integrity check succeeded
+else
+    echo Machine integrity check failed!
+    (exit 1)
+fi
 
-# Common policy for nodes and users.
-[ signing_policy ]
-organizationName = supplied
-commonName = optional
+###
+### At this point verifier knows that machine state has integrity
+###
 
-# Used to sign node certificates.
-[ signing_node_req ]
-keyUsage = critical,digitalSignature,keyEncipherment
-extendedKeyUsage = serverAuth,clientAuth
 
-# Used to sign client certificates.
-[ signing_client_req ]
-keyUsage = critical,digitalSignature,keyEncipherment
-extendedKeyUsage = clientAuth
-EOT
+# Now we create a certificate for Endorsement-Hierarchy's AK
 
-# Create the CA key using the openssl genrsa command:
-openssl genrsa -out ca.key 2048
-chmod 400 ca.key
 
-# Create the CA certificate using the openssl req command:
-openssl req \
--new \
--x509 \
--config ca.cnf \
--key ca.key \
--out ca.crt \
--days 365 \
--batch
+# On verifier
+# -----------
 
-# Reset database and index files:
-rm -f index.txt serial.txt
-touch index.txt
-echo '01' > serial.txt
+# Create the ak.cnf file for AK:
+rm -rf certs
+mkdir -p certs
 
-# Create the client.cnf file for the first user and copy the following configuration into it:
-
-cat > client.cnf <<'EOT'
+cat > certs/ak.cnf <<'EOT'
 [ req ]
 prompt=no
 distinguished_name = distinguished_name
@@ -152,40 +161,41 @@ commonName = AK
 subjectAltName = DNS:root
 EOT
 
-# Create the key for the first client using the openssl genrsa command:
-##openssl genrsa -out certs/client.AK.key 2048
-##chmod 400 certs/client.AK.key
-
-# Create the CSR for the first client using the openssl req command:
-# https://github.com/tpm2-software/tpm2-openssl/blob/master/docs/certificates.md
-tpm2_evictcontrol -c rsa_ak.ctx 0x81000000
+# Create the CSR for AK using the openssl req command:
+# See https://github.com/tpm2-software/tpm2-openssl/blob/master/docs/certificates.md
 openssl req \
 -provider tpm2 \
 -new \
--config client.cnf \
+-config certs/ak.cnf \
 -key handle:0x81000000 \
--out client.AK.csr \
+-out certs/ak.csr \
 -batch
 
 # Sign the client CSR to create the client certificate for the first client using the openssl ca command.
 openssl ca \
--config ca.cnf \
--keyfile ca.key \
--cert ca.crt \
+-config ca/ca.cnf \
+-keyfile ca/ca.key \
+-cert ca/ca.crt \
 -policy signing_policy \
 -extensions signing_client_req \
--out client.AK.crt \
+-out certs/ak.crt \
 -outdir certs/ \
--in client.AK.csr \
+-in certs/ak.csr \
 -batch
 
 # Verify the values in the CN field in the certificate:
-openssl x509 -in certs/client.AK.crt -text | grep CN=
+openssl x509 -in certs/ak.crt -text | grep "CN ="
 
+# TODO
+# Let machine create Owner-Hierarchy SRK and AIK
+# Let verifier/CA record SRK and AIK public keys
+# Let CA create certificate for AIK
 
+# TODO2
+# Remote attestation using AIK
 
+# TODO3
+# Seal + Unseal secret
 
-# Create a CSR for the AK
-# Have S3NS CA sign the CSR
-
-# Same for the AIK
+# TODO4
+# Add check that CC is enabled

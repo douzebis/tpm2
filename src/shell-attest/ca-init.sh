@@ -16,8 +16,8 @@ default_ca = CA_default
 
 [ CA_default ]
 default_days = 365
-database = index.txt
-serial = serial.txt
+database = ca/index.txt
+serial = ca/serial.txt
 default_md = sha256
 copy_extensions = copy
 unique_subject = no
