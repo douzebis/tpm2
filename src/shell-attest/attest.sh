@@ -171,7 +171,6 @@ openssl req \
 -out client.AK.csr \
 -batch
 
-
 # Sign the client CSR to create the client certificate for the first client using the openssl ca command.
 openssl ca \
 -config ca.cnf \

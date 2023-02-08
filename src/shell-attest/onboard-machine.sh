@@ -1,19 +1,12 @@
 # Inspired by https://tpm2-software.github.io/2020/06/12/Remote-Attestation-With-tpm2-tools.html#simple-attestation-with-tpm2-tools
 
-# Attester machine configuration
-# ------------------------------
-
-# Install TPM2 provider for openssl
-sudo apt-get install tpm2-openssl
-
-
 # On attester (the machine being onboarded)
 # -----------------------------------------
 
 tpm2_createek \
 --ek-context rsa_ek.ctx \
 --key-algorithm rsa \
---public rsa_ek.pub
+--public rsa_ek.der
 
 tpm2_createak \
 --ek-context rsa_ek.ctx \
@@ -170,7 +163,6 @@ openssl req \
 -key handle:0x81000000 \
 -out client.AK.csr \
 -batch
-
 
 # Sign the client CSR to create the client certificate for the first client using the openssl ca command.
 openssl ca \
