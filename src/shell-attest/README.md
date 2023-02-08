@@ -3,6 +3,6 @@
 Steps to follow:
 
 1. Steps in src/shell-attest/manufacturer.sh
-2. Steps in src/shell-attest/ca-ini.sh
+2. Steps in src/shell-attest/ca-init.sh
 3. Steps in src/shell-attest/boot-image.sh
 4. Steps in src/shell-attest/onboard-machine.sh
