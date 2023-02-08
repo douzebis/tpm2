@@ -3,10 +3,13 @@
 # On attester (the machine being onboarded)
 # -----------------------------------------
 
+rm -rf machine
+mkdir -p machine
+
 tpm2_createek \
---ek-context rsa_ek.ctx \
+--ek-context machine/rsa_ek.ctx \
 --key-algorithm rsa \
---public rsa_ek.der
+--public rsa_ek_pub.der
 
 tpm2_createak \
 --ek-context rsa_ek.ctx \
