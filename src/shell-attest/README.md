@@ -1,0 +1,1 @@
+![remote attestation workflow](https://raw.githubusercontent.com/douzebis/tpm2-software.github.io/master/images/diag1.png)
