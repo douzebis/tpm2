@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: Apache-2.0
+
+# In this tutorial, we use the same GCP Shielded VM
+# for playing the role of Attestor, Verifier, Owner CA, etc.
+
+
+# The tutorial should be run as ubuntu user
+echo sudo su - ubuntu
+
+# Install needed packages
+# -----------------------
+
+# Install yq yaml parser
+# See https://mikefarah.gitbook.io/yq/v/v3.x/
+sudo snap install yq --channel=v3/stable
+
+# Create needed directories
+# -------------------------
+
+rm -rf attestor
+mkdir -p attestor
+rm -rf verifier
+mkdir -p verifier
+rm -rf manufacturer
+mkdir -p manufacturer
+
+# Setup needed environment variables
+# ----------------------------------
+
+export RED='\e[0;31m'
+export GREEN='\e[0;32m'
+export ORANGE='\e[0;33m'
+export NC='\e[0m' # No Color
+export ZONE=europe-west9-b
+export PROJECT_ID=lab-res-fred-shared
+export INSTANCE=tpm1
+
+# Authenticate
+# ------------
+
+echo gcloud auth login
+echo gcloud config set project $PROJECT_ID

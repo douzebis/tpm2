@@ -1,0 +1,39 @@
+%% https://mermaid-js.github.io/mermaid-live-editor/edit#pako:eNpFjj0OwjAMha9SvbknyMzKxIa8WLELkRq7pMmAqt6dqAi6vT89fRuiiyJg1VdTi3pJ_CicyTAia8mcpLcb2TAQ6lOzEkKXohO3uRLI9j7lVv32togw8bzqiLYI19_bP13Y7u6nV0nVy_WLcJDsH1fBMjc
+%% https://mermaid.js.org/syntax/sequenceDiagram.html
+
+sequenceDiagram
+  participant TPM
+  participant Attestor
+  participant Verifier
+  participant Owner CI/CD
+  participant Owner CA
+
+  Note over TPM, Owner CA: Onboard machine (attestor)
+
+  loop Boot machine in onboarding configuration
+    Owner CI/CD->>Owner CI/CD: Generate boot image for onboarding and compute digests
+    Owner CI/CD->>Attestor: Upload boot image and force reboot
+    Attestor->>TPM: Shutdown/startup TPM
+  end
+  loop Generate AK
+    Verifier->>Attestor: Get AK
+    Attestor->>TPM: Create EK (default profile)
+    TPM-->>Attestor: EK Pub
+    Attestor->>TPM: Create AK (EK child)
+    TPM-->>Attestor: (AK Pub, AK Name)
+    Attestor-->>Verifier: (EK Pub, AK Pub, AK Name)
+    note over Verifier: Generate Credential
+    Verifier->>Attestor: Credential Challenge
+    Attestor->>TPM: Activate Credential
+    TPM-->>Attestor: secret
+    Attestor-->>Verifier: secret
+    note over Verifier: Validate secret versus Credential
+    Verifier->>Verifier: Create AK CSR
+    Verifier->>Attestor: Sign AK CSR
+    Attestor->>TPM: Sign AK CSR
+    TPM-->>Attestor: Signed AK CSR
+    Attestor-->>Verifier: Signed AK CSR
+    Verifier->>Owner CA: Signed AK CSR
+    Owner CA-->>Verifier: AK Cert
+    Verifier->>Verifier: Store AK Cert in registry
+  end

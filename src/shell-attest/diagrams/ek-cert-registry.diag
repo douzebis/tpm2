@@ -1,0 +1,38 @@
+%% https://mermaid-js.github.io/mermaid-live-editor/edit#pako:eNpFjj0OwjAMha9SvbknyMzKxIa8WLELkRq7pMmAqt6dqAi6vT89fRuiiyJg1VdTi3pJ_CicyTAia8mcpLcb2TAQ6lOzEkKXohO3uRLI9j7lVv32togw8bzqiLYI19_bP13Y7u6nV0nVy_WLcJDsH1fBMjc
+%% https://mermaid.js.org/syntax/sequenceDiagram.html
+
+sequenceDiagram
+  participant TPM
+  participant Attestor
+  participant Verifier
+  participant Owner CI/CD
+  participant Owner CA
+  participant TPM CA
+
+  Note over TPM, TPM CA: Register EK certificate with Owner CA (custom for GCP vTPM)
+
+  loop Boot machine in onboarding configuration
+    Owner CI/CD->>Owner CI/CD: Generate boot image for onboarding
+    Owner CI/CD->>Attestor: Upload boot image and force reboot
+    Attestor->>TPM: Shutdown/startup TPM
+  end
+  loop Read EK Pub
+    Verifier->>Attestor: Get EK Pub
+    Attestor->>TPM: Create EK (default profile)
+    TPM-->>Attestor: EK Pub
+    Attestor-->>Verifier: EK Pub
+  end
+  loop Validate EK Pub
+    Verifier->>TPM CA: Validate EK Pub
+    TPM CA-->>Verifier: Valid / Invalid
+    note over Verifier: Validate EK Pub
+    break when Invalid
+      note over Verifier: Abort onboarding
+    end
+  end
+  loop Register EK Cert
+    Verifier->>Verifier: Create special EK CSR
+    Verifier->>Owner CA: (EK CSR, EK Pub)
+    Owner CA-->>Verifier: EK Cert
+    note over Verifier: Store EK Cert in Verifier registry
+  end
